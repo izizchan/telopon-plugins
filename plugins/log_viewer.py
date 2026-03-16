@@ -23,6 +23,11 @@ class LogViewerPlugin(BasePlugin):
         self._last_pos    = 0
         self._after_id    = None
         self._auto_scroll = True
+        # 保存済みの絶対パスが無効になっていればリセット
+        s = self.get_settings()
+        if s.get("log_path") and not os.path.isfile(s["log_path"]):
+            s["log_path"] = ""
+            self.save_settings(s)
 
     def get_default_settings(self):
         return {

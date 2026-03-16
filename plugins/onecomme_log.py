@@ -30,6 +30,11 @@ class OnecommeLogPlugin(BasePlugin):
         self.is_running   = False
         self.is_connected = self.get_settings().get("enabled", False)
         self.thread       = None
+        # 保存済みパスがデフォルト値の絶対展開と一致すればリセット
+        s = self.get_settings()
+        if s.get("log_dir") == _DEFAULT_LOG_DIR:
+            s["log_dir"] = ""
+            self.save_settings(s)
 
     def get_default_settings(self):
         return {
