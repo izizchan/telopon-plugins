@@ -1,6 +1,6 @@
 # TeloPon プラグイン集
 
-[TeloPon](https://github.com/miyumiyu/TeloPon) 向けの非公式プラグインです。
+[TeloPon（公式）](https://github.com/miyumiyu/TeloPon) 向けの非公式プラグインです。
 
 > **English documentation** → [README_en.md](README_en.md)
 
@@ -20,7 +20,7 @@
 
 ## 動作環境
 
-- **TeloPon v1.21b** 以降
+- **TeloPon v1.22b** 以降
 - Windows 10 / 11
 - OBS Studio（OBSと連携する機能を使う場合）
   - WebSocket サーバー有効化が必要（OBS → ツール → WebSocket サーバー設定）
@@ -34,23 +34,17 @@
 ## インストール
 
 1. このリポジトリをダウンロード（または `git clone`）
-2. `plugins/` フォルダ内の `.py` ファイルと `.json` ファイルを TeloPon の `plugins/` フォルダにコピー
-   - **`.json` ファイルは初回のみコピー**してください（ユーザー設定が上書きされます）
+2. `plugins/` フォルダ内の `.py` ファイルを TeloPon の `plugins/` フォルダにコピー
 3. TeloPon を再起動
 
 ```
-TeloPon-1.21b/
+TeloPon-1.22b/
 └── plugins/
     ├── obs_screenshot_sender.py   ← コピー
-    ├── obs_screenshot_sender.json ← 初回のみコピー
     ├── obs_status_badge.py
-    ├── obs_status_badge.json
     ├── telop_reader.py
-    ├── telop_reader.json
     ├── onecomme_log.py
-    ├── onecomme_log.json
-    ├── log_viewer.py
-    └── log_viewer.json
+    └── log_viewer.py
 ```
 
 ---
@@ -90,24 +84,6 @@ OBS の `BroadcastCustomEvent` で以下の JSON を送信します。
 | `set_source` | `slot`: 1〜4, `name`: ソース名 | ソース名を変更して保存 |
 | `set_interval` | `seconds`: 秒数（最小10） | 定期送信間隔を変更して保存 |
 | `auto` | `enabled`: true/false | 定期送信をON/OFFに切り替え |
-
-#### 設定ファイル
-
-`obs_screenshot_sender.json`（例）:
-
-```json
-{
-  "enabled": true,
-  "source1": "ゲーム画面",
-  "prompt1": "今の画面の状況を実況してください！",
-  "scene1": "",
-  "auto_send1": true,
-  "auto_send": true,
-  "interval_sec": 120,
-  "auto_stop_min": 60,
-  "skip_duplicate": true
-}
-```
 
 #### 必要ライブラリ
 
@@ -168,7 +144,7 @@ TeloPon のデバッグログを監視してステータスを判定します。
 
 - 音声・出力デバイスを UI から選択（SAPI）
 - スピーカー・出力デバイスを UI から選択（VOICEVOX / COEIROINK）
-- 再生速度調整
+- 再生速度・音量調整（0〜200%）
 - 読み上げ対象を選択（explainテロップ / 通常テロップ / TOPIC）
 - 有効シーン指定（指定シーン以外では読み上げしない）
 - システムメッセージスキップ（「接続中」「切断」等を読まない）
@@ -186,6 +162,12 @@ TeloPon のデバッグログを監視してステータスを判定します。
 
 [わんコメ（OneComme）](https://onecomme.com/) のコメントログを監視し、
 新着コメントをまとめてAIに送信します。
+
+#### 事前設定
+
+わんコメ側でログ書き出しを有効にしてください。
+
+> わんコメの設定 → その他 → コメントログを残す → **「ログをファイルとしても書き出し」をチェック**
 
 #### 動作
 

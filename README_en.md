@@ -1,6 +1,6 @@
 # TeloPon Plugin Collection
 
-Unofficial plugins for [TeloPon](https://github.com/miyumiyu/TeloPon), an AI-powered streaming assistant for OBS.
+Unofficial plugins for [TeloPon (official)](https://github.com/miyumiyu/TeloPon), an AI-powered streaming assistant for OBS.
 
 > **日本語ドキュメント** → [README.md](README.md)
 
@@ -20,7 +20,7 @@ Unofficial plugins for [TeloPon](https://github.com/miyumiyu/TeloPon), an AI-pow
 
 ## Requirements
 
-- **TeloPon v1.21b** or later
+- **TeloPon v1.22b** or later
 - Windows 10 / 11
 - OBS Studio (for OBS-integrated features)
   - WebSocket Server must be enabled: OBS → Tools → WebSocket Server Settings
@@ -34,23 +34,17 @@ Unofficial plugins for [TeloPon](https://github.com/miyumiyu/TeloPon), an AI-pow
 ## Installation
 
 1. Download or `git clone` this repository
-2. Copy the `.py` and `.json` files from `plugins/` into TeloPon's `plugins/` folder
-   - **Copy `.json` files only on first install** to avoid overwriting your settings
+2. Copy the `.py` files from `plugins/` into TeloPon's `plugins/` folder
 3. Restart TeloPon
 
 ```
-TeloPon-1.21b/
+TeloPon-1.22b/
 └── plugins/
     ├── obs_screenshot_sender.py   ← copy
-    ├── obs_screenshot_sender.json ← first install only
     ├── obs_status_badge.py
-    ├── obs_status_badge.json
     ├── telop_reader.py
-    ├── telop_reader.json
     ├── onecomme_log.py
-    ├── onecomme_log.json
-    ├── log_viewer.py
-    └── log_viewer.json
+    └── log_viewer.py
 ```
 
 ---
@@ -91,24 +85,6 @@ Send a `BroadcastCustomEvent` from OBS with the following JSON:
 | `set_interval` | `seconds`: interval (min 10) | Update and save the auto-send interval |
 | `auto` | `enabled`: true/false | Toggle auto-send on or off |
 
-#### Settings File
-
-`obs_screenshot_sender.json` (example):
-
-```json
-{
-  "enabled": true,
-  "source1": "Game Capture",
-  "prompt1": "Please describe what's happening on screen!",
-  "scene1": "",
-  "auto_send1": true,
-  "auto_send": true,
-  "interval_sec": 120,
-  "auto_stop_min": 60,
-  "skip_duplicate": true
-}
-```
-
 #### Dependencies
 
 - `obsws-python` (bundled with TeloPon)
@@ -127,9 +103,9 @@ Monitors TeloPon's debug log to determine the current state.
 
 | State | Default text | Color |
 |---|---|---|
-| Connected (idle) | `● Connected` | Green |
-| Thinking (generating) | `○ Thinking` | Yellow |
-| Disconnected | `● Disconnected` | Red |
+| Connected (idle) | `● 接続中` | Green |
+| Thinking (generating) | `○ 思考中` | Yellow |
+| Disconnected | `● 切断` | Red |
 
 - Display strings are customizable via the settings UI
 - "Thinking" state is triggered by generation-start log entries and lasts 6 seconds
@@ -168,7 +144,7 @@ and reads them aloud using text-to-speech.
 
 - Select voice and audio output device from the UI (SAPI)
 - Select speaker and output device from the UI (VOICEVOX / COEIROINK)
-- Speed control for all backends
+- Speed and volume control (0–200%) for all backends
 - Choose what to read: explain telops / normal telops / TOPIC field
 - Active scene filter: only read aloud in the specified OBS scene
 - Skip system messages: ignore "connecting", "disconnected" etc.
@@ -185,6 +161,12 @@ If the required library is not included, audio plays on the system default outpu
 **File:** `onecomme_log.py`
 
 Watches [OneComme](https://onecomme.com/) comment logs and forwards new messages to the AI in batches.
+
+#### Prerequisites
+
+Enable log file output in OneComme first:
+
+> OneComme Settings → Other → Keep comment log → **Check "Also write log as file"**
 
 #### How it works
 
@@ -232,8 +214,6 @@ These plugins currently support **Japanese only**.
 
 TeloPon's standard plugin convention uses an **inline `_L` dictionary + `_t()` function** pattern
 for i18n — all translations live in the same `.py` file with no separate folders or files needed.
-This is the correct approach for single-file plugins (folder-based i18n is used only for
-multi-paragraph AI prompt files).
 
 Contributions adding English, Russian, or Korean translations are welcome.
 
