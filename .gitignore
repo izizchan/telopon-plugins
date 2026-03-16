@@ -1,0 +1,16 @@
+# Windows shortcuts
+*.lnk
+
+# ローカル環境固有のスクリプト
+deploy.bat
+claude.bat
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Claude Code
+.claude/
+
+# プラグイン設定（ユーザー個別のパス・設定を含むため）
+plugins/*.json
