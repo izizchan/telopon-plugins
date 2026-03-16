@@ -27,7 +27,7 @@ class LogViewerPlugin(BasePlugin):
     def get_default_settings(self):
         return {
             "enabled":  False,
-            "log_path": _default_log_path(),
+            "log_path": "",
         }
 
     def start(self, prompt_config, plugin_queue):
@@ -128,7 +128,8 @@ class LogViewerPlugin(BasePlugin):
         # パスと有効フラグを設定に保存
         s = self.get_settings()
         s["enabled"]  = self._var_enabled.get()
-        s["log_path"] = self._var_path.get().strip()
+        path = self._var_path.get().strip()
+        s["log_path"] = "" if path == _default_log_path() else path
         self.save_settings(s)
         self.panel.destroy()
 

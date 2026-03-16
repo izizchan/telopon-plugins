@@ -34,7 +34,7 @@ class OnecommeLogPlugin(BasePlugin):
     def get_default_settings(self):
         return {
             "enabled":      False,
-            "log_dir":      _DEFAULT_LOG_DIR,
+            "log_dir":      "",
             "cooldown_sec": 5.0,
         }
 
@@ -64,7 +64,7 @@ class OnecommeLogPlugin(BasePlugin):
         ttk.Label(base, text="わんコメ コメントログフォルダ:").pack(anchor="w")
         row_dir = ttk.Frame(base)
         row_dir.pack(fill="x", pady=(4, 10))
-        var_dir = tk.StringVar(value=settings.get("log_dir", _DEFAULT_LOG_DIR))
+        var_dir = tk.StringVar(value=settings.get("log_dir", "") or _DEFAULT_LOG_DIR)
         ent_dir = ttk.Entry(row_dir, textvariable=var_dir)
         ent_dir.pack(side="left", fill="x", expand=True)
 
@@ -94,7 +94,7 @@ class OnecommeLogPlugin(BasePlugin):
                 cd = 5.0
             self.save_settings({
                 "enabled":      var_enabled.get(),
-                "log_dir":      var_dir.get().strip(),
+                "log_dir":      "" if var_dir.get().strip() == _DEFAULT_LOG_DIR else var_dir.get().strip(),
                 "cooldown_sec": cd,
             })
             self.is_connected = var_enabled.get()
