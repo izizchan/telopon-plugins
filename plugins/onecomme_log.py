@@ -13,7 +13,7 @@ import time
 import datetime
 import threading
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog
 from plugin_manager import BasePlugin
 import logger
 
@@ -121,11 +121,9 @@ class OnecommeLogPlugin(BasePlugin):
         log_dir = settings.get("log_dir", "") or _DEFAULT_LOG_DIR
         if not os.path.isdir(log_dir):
             self.is_connected = False
-            logger.warning(f"[{self.PLUGIN_NAME}] ログフォルダが見つかりません: {log_dir}")
-            messagebox.showwarning(
-                self.PLUGIN_NAME,
-                "わんコメのコメントログフォルダが見つかりません。\n\n"
-                "わんコメの設定 > その他 > コメントログを残す >\n"
+            logger.warning(
+                f"[{self.PLUGIN_NAME}] ログフォルダが見つかりません: {log_dir}\n"
+                "わんコメの設定 > その他 > コメントログを残す > "
                 "「ログをファイルとしても書き出し」をチェックしてください。"
             )
             return

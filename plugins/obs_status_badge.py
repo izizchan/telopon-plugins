@@ -71,6 +71,7 @@ class ObsStatusBadgePlugin(BasePlugin):
         self._last_log_pos   = 0
         self._last_thinking  = 0.0
         self._obs_err_count  = 0   # 連続エラー数（ログ抑制用）
+        self._font_size_fixed = False  # 初回フォントサイズ補正済みフラグ
 
     def get_default_settings(self):
         return {
@@ -83,14 +84,51 @@ class ObsStatusBadgePlugin(BasePlugin):
     # ==========================================
     # ライフサイクル
     # ==========================================
+    def _check_source_exists(self, source_name):
+        """OBSに接続してテキストソースが存在するか確認する。OBS未起動時はTrueを返す。"""
+        conn = _load_obs_conn()
+        try:
+            import obsws_python as obs
+            cl = obs.ReqClient(
+                host=conn.get("host", "127.0.0.1"),
+                port=int(conn.get("port", 4455)),
+                password=conn.get("password", ""),
+                timeout=3,
+            )
+            inputs = cl.get_input_list().inputs
+            cl.disconnect()
+            return any(inp.get("inputName") == source_name for inp in inputs)
+        except Exception:
+            return True  # OBS未起動などの場合は存在扱い（誤無効化を防ぐ）
+
+    def _disable_badge(self):
+        """badge_enabled を False に保存し、UI チェックも外す。"""
+        s = self.get_settings()
+        s["badge_enabled"] = False
+        self.save_settings(s)
+        try:
+            if hasattr(self, "_var_badge_enabled"):
+                self._var_badge_enabled.set(False)
+        except Exception:
+            pass
+
     def start(self, prompt_config, plugin_queue):
         if not self.get_settings().get("badge_enabled", True):
             return
         self.plugin_queue  = plugin_queue
+
+        # テキストソースの存在確認
+        source = self.get_settings().get("source_name", "").strip()
+        if source and not self._check_source_exists(source):
+            logger.warning(f"[{self.PLUGIN_NAME}] テキストソース '{source}' が見つかりません。プラグインを無効化します。")
+            self._disable_badge()
+            return
+
         self._ai_connected = True
         self.is_running    = True
         self._last_log_pos = self._get_log_size()
         self._last_thinking = 0.0
+        self._font_size_fixed = False
 
         if self._thread is None or not self._thread.is_alive():
             self._thread = threading.Thread(target=self._loop, daemon=True)
@@ -167,8 +205,9 @@ class ObsStatusBadgePlugin(BasePlugin):
             foreground="gray", justify="left"
         ).pack(anchor="w", pady=(8, 0))
 
-        self.lbl_status = ttk.Label(main_f, text="", foreground="gray")
-        self.lbl_status.pack(anchor="w", pady=(4, 0))
+        self.lbl_status = tk.Label(main_f, text="", foreground="gray",
+                                   font=("", 9), anchor="w", padx=4, pady=1)
+        self.lbl_status.pack(anchor="w", pady=(4, 0), fill=tk.X)
 
         tk.Button(
             main_f, text="保存して閉じる",
@@ -176,16 +215,55 @@ class ObsStatusBadgePlugin(BasePlugin):
             command=self._save_and_close
         ).pack(fill=tk.X, pady=(12, 0))
 
+    _MSG_STYLE = {
+        "gray":   {"foreground": "gray",    "background": ""},
+        "green":  {"foreground": "#00aa44", "background": ""},
+        "orange": {"foreground": "#FFD700", "background": "#3d2800"},
+        "red":    {"foreground": "#FF8080", "background": "#3a0000"},
+    }
+
+    def _set_lbl_status(self, text, color="gray"):
+        style = self._MSG_STYLE.get(color, self._MSG_STYLE["gray"])
+        try:
+            if self.lbl_status and self.lbl_status.winfo_exists():
+                bg = style["background"] or self.lbl_status.master.cget("background")
+                self.lbl_status.config(text=text, foreground=style["foreground"], background=bg)
+        except Exception:
+            pass
+
     def _save_and_close(self):
         s = self.get_settings()
         s["enabled"]            = True
-        s["badge_enabled"]      = self._var_badge_enabled.get()
         s["source_name"]        = self.ent_source.get().strip()
         s["text_connected"]     = self._var_text_connected.get().strip()    or _ST_CONNECTED[0]
         s["text_thinking"]      = self._var_text_thinking.get().strip()     or _ST_THINKING[0]
         s["text_disconnected"]  = self._var_text_disconnected.get().strip() or _ST_DISCONNECTED[0]
+
+        # テキストソースが存在しない場合はチェックを無効化
+        badge_enabled = self._var_badge_enabled.get()
+        if badge_enabled and s["source_name"] and not self._check_source_exists(s["source_name"]):
+            logger.warning(f"[{self.PLUGIN_NAME}] テキストソース '{s['source_name']}' が見つかりません。チェックを無効化します。")
+            badge_enabled = False
+            self._var_badge_enabled.set(False)
+            self._set_lbl_status(f"⚠ ソース '{s['source_name']}' がOBSに見つかりません", "orange")
+        s["badge_enabled"] = badge_enabled
+
         self.save_settings(s)
-        self.panel.destroy()
+
+        # ライブ接続中かつ監視ループが止まっている場合は再開する
+        if badge_enabled and self.plugin_queue and not self.is_running:
+            self._ai_connected = True
+            self.is_running    = True
+            self._last_log_pos = self._get_log_size()
+            self._last_thinking = 0.0
+            self._font_size_fixed = False
+            if self._thread is None or not self._thread.is_alive():
+                self._thread = threading.Thread(target=self._loop, daemon=True)
+                self._thread.start()
+            logger.info(f"[{self.PLUGIN_NAME}] 設定保存後にOBSステータス監視を再開しました。")
+
+        if badge_enabled:
+            self.panel.destroy()
 
     # ==========================================
     # バックグラウンドループ
@@ -244,6 +322,21 @@ class ObsStatusBadgePlugin(BasePlugin):
         try:
             import obsws_python as obs
             cl = obs.ReqClient(host=host, port=port, password=password, timeout=3)
+
+            # 初回のみフォントサイズを確認し、200以上なら25に補正する
+            if not self._font_size_fixed:
+                try:
+                    res = cl.get_input_settings(source)
+                    font = res.input_settings.get("font", {})
+                    size = font.get("size", 0)
+                    if size >= 200:
+                        font["size"] = 25
+                        cl.set_input_settings(source, {"font": font}, True)
+                        logger.info(f"[{self.PLUGIN_NAME}] フォントサイズを {size} → 25 に補正しました。")
+                except Exception as fe:
+                    logger.debug(f"[{self.PLUGIN_NAME}] フォントサイズ確認失敗: {fe}")
+                self._font_size_fixed = True
+
             cl.set_input_settings(source, {"text": text, "color": color}, True)
             self._obs_err_count = 0  # 成功したらリセット
         except Exception as e:

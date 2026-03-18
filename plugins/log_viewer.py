@@ -166,9 +166,9 @@ class LogViewerPlugin(BasePlugin):
                 self._load_new(self._last_pos, log_path)
                 self._last_pos = size
         except FileNotFoundError:
-            self._set_status(f"ファイルが見つかりません: {log_path}")
+            self._set_status(f"⚠ ファイルが見つかりません: {log_path}", "orange")
         except Exception as e:
-            self._set_status(f"読み込みエラー: {e}")
+            self._set_status(f"❌ 読み込みエラー: {e}", "red")
 
         self._after_id = self.panel.after(1000, self._poll)
 
@@ -187,7 +187,7 @@ class LogViewerPlugin(BasePlugin):
                 self.txt.see(tk.END)
             self._set_status(f"{len(lines)} 行読み込み済み  |  {log_path}")
         except Exception as e:
-            self._set_status(f"読み込みエラー: {e}")
+            self._set_status(f"❌ 読み込みエラー: {e}", "red")
 
     def _load_new(self, from_pos, log_path):
         try:
@@ -207,7 +207,7 @@ class LogViewerPlugin(BasePlugin):
                 self.txt.see(tk.END)
             self._set_status(f"+{len(lines)} 行追加")
         except Exception as e:
-            self._set_status(f"読み込みエラー: {e}")
+            self._set_status(f"❌ 読み込みエラー: {e}", "red")
 
     def _insert_line(self, line):
         upper = line.upper()
@@ -222,6 +222,16 @@ class LogViewerPlugin(BasePlugin):
         self.txt.delete("1.0", tk.END)
         self.txt.config(state="disabled")
 
-    def _set_status(self, msg):
+    _MSG_STYLE = {
+        "gray":   {"foreground": "gray",    "background": "#2d2d2d"},
+        "green":  {"foreground": "#00aa44", "background": "#2d2d2d"},
+        "orange": {"foreground": "#FFD700", "background": "#3d2800"},
+        "red":    {"foreground": "#FF8080", "background": "#3a0000"},
+    }
+
+    def _set_status(self, msg, color="gray"):
+        style = self._MSG_STYLE.get(color, self._MSG_STYLE["gray"])
         if hasattr(self, "lbl_stat") and self.lbl_stat.winfo_exists():
-            self.lbl_stat.config(text=f"  {msg}")
+            self.lbl_stat.config(text=f"  {msg}",
+                                 foreground=style["foreground"],
+                                 background=style["background"])

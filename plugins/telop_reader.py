@@ -355,8 +355,7 @@ class TelopReaderPlugin(BasePlugin):
                 try:
                     if hasattr(self, "panel") and self.panel and self.panel.winfo_exists():
                         err = str(e)
-                        self.panel.after(0, lambda msg=err: self._lbl_status.config(
-                            text=f"❌ {msg}", foreground="red"))
+                        self.panel.after(0, lambda msg=err: self._set_status(f"❌ {msg}", "red"))
                 except Exception:
                     pass
 
@@ -598,7 +597,8 @@ class TelopReaderPlugin(BasePlugin):
             command=self._save_settings
         ).pack(fill=tk.X)
 
-        self._lbl_status = ttk.Label(main_f, text="", foreground="gray")
+        self._lbl_status = tk.Label(main_f, text="", foreground="gray",
+                                    font=("", 9), anchor="w", padx=4, pady=1)
         self._lbl_status.pack(pady=(6, 0))
 
     # ── SAPIタブ ──────────────────────────────
@@ -740,7 +740,7 @@ class TelopReaderPlugin(BasePlugin):
         self.panel.after(0, lambda: self._cb_sapi_voice.config(values=voices))
         msg = f"✅ {len(voices)}件" if voices else "❌ 取得失敗"
         clr = "green" if voices else "red"
-        self.panel.after(0, lambda: self._lbl_status.config(text=msg, foreground=clr))
+        self.panel.after(0, lambda: self._set_status(msg, clr))
 
     def _fetch_sapi_devices(self):
         threading.Thread(target=self._fetch_sapi_devices_bg, daemon=True).start()
@@ -750,7 +750,7 @@ class TelopReaderPlugin(BasePlugin):
         self.panel.after(0, lambda: self._cb_sapi_device.config(values=["（デフォルト）"] + devices))
         msg = f"✅ {len(devices)}件" if devices else "❌ 取得失敗"
         clr = "green" if devices else "red"
-        self.panel.after(0, lambda: self._lbl_status.config(text=msg, foreground=clr))
+        self.panel.after(0, lambda: self._set_status(msg, clr))
 
     def _get_playback_devices(self) -> list:
         """
@@ -776,7 +776,7 @@ class TelopReaderPlugin(BasePlugin):
         self.panel.after(0, lambda: self._cb_vv_device.config(values=values))
         msg = f"✅ {len(devices)}件" if devices else "❌ 取得失敗"
         clr = "green" if devices else "red"
-        self.panel.after(0, lambda: self._lbl_status.config(text=msg, foreground=clr))
+        self.panel.after(0, lambda: self._set_status(msg, clr))
 
     def _fetch_vv_speakers(self):
         threading.Thread(target=self._fetch_vv_speakers_bg, daemon=True).start()
@@ -799,12 +799,11 @@ class TelopReaderPlugin(BasePlugin):
                     if item.split(":")[0].strip() == saved_id:
                         self._var_vv_speaker.set(item)
                         break
-                self._lbl_status.config(text=f"✅ {len(items)}件取得", foreground="green")
+                self._set_status(f"✅ {len(items)}件取得", "green")
 
             self.panel.after(0, _update)
         except Exception as e:
-            self.panel.after(0, lambda: self._lbl_status.config(
-                text=f"❌ 取得失敗: {e}", foreground="red"))
+            self.panel.after(0, lambda: self._set_status(f"❌ 取得失敗: {e}", "red"))
 
     def _fetch_ci_speakers(self):
         threading.Thread(target=self._fetch_ci_speakers_bg, daemon=True).start()
@@ -834,12 +833,11 @@ class TelopReaderPlugin(BasePlugin):
                     if uuid == saved_uuid and sid == saved_style:
                         self._var_ci_speaker_display.set(display)
                         break
-                self._lbl_status.config(text=f"✅ {len(items)}件取得", foreground="green")
+                self._set_status(f"✅ {len(items)}件取得", "green")
 
             self.panel.after(0, _update)
         except Exception as e:
-            self.panel.after(0, lambda: self._lbl_status.config(
-                text=f"❌ 取得失敗: {e}", foreground="red"))
+            self.panel.after(0, lambda: self._set_status(f"❌ 取得失敗: {e}", "red"))
 
     def _fetch_ci_devices(self):
         threading.Thread(target=self._fetch_ci_devices_bg, daemon=True).start()
@@ -850,7 +848,7 @@ class TelopReaderPlugin(BasePlugin):
         self.panel.after(0, lambda: self._cb_ci_device.config(values=values))
         msg = f"✅ {len(devices)}件" if devices else "❌ 取得失敗"
         clr = "green" if devices else "red"
-        self.panel.after(0, lambda: self._lbl_status.config(text=msg, foreground=clr))
+        self.panel.after(0, lambda: self._set_status(msg, clr))
 
     def _test_speak(self, backend):
         s = self._collect_settings()
@@ -871,8 +869,23 @@ class TelopReaderPlugin(BasePlugin):
             elif s["backend"] == "coeiroink":
                 self._speak_coeiroink(text, s)
         except Exception as e:
-            self.panel.after(0, lambda: self._lbl_status.config(
-                text=f"❌ {e}", foreground="red"))
+            self.panel.after(0, lambda: self._set_status(f"❌ {e}", "red"))
+
+    _MSG_STYLE = {
+        "gray":   {"foreground": "gray",    "background": ""},
+        "green":  {"foreground": "#00aa44", "background": ""},
+        "orange": {"foreground": "#FFD700", "background": "#3d2800"},
+        "red":    {"foreground": "#FF8080", "background": "#3a0000"},
+    }
+
+    def _set_status(self, text, color="gray"):
+        style = self._MSG_STYLE.get(color, self._MSG_STYLE["gray"])
+        try:
+            if self._lbl_status.winfo_exists():
+                bg = style["background"] or self._lbl_status.master.cget("background")
+                self._lbl_status.config(text=text, foreground=style["foreground"], background=bg)
+        except Exception:
+            pass
 
     def _collect_settings(self):
         s = self.get_settings()
@@ -930,4 +943,4 @@ class TelopReaderPlugin(BasePlugin):
             self._stop_scene_listener()
             self._start_scene_listener(s)
 
-        self._lbl_status.config(text="✅ 保存しました", foreground="green")
+        self._set_status("✅ 保存しました", "green")
