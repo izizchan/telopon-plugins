@@ -14,3 +14,7 @@ __pycache__/
 
 # プラグイン設定（ユーザー個別のパス・設定を含むため）
 plugins/*.json
+
+# Issue草稿（ローカル作業用）
+_docs_myissue*.md
+_bugs_myissue*.md

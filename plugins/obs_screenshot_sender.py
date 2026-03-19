@@ -21,6 +21,7 @@ except ImportError:
 from plugin_manager import BasePlugin
 
 _DEFAULT_PROMPT = "【配信画面の更新】今の画面の状況です！これを見て実況やツッコミを入れてください！"
+_PICKER_EMPTY = "-- 未選択(空) --"
 
 
 def _load_obs_conn():
@@ -327,6 +328,213 @@ class ObsScreenshotSenderPlugin(BasePlugin):
             logger.warning(f"[{self.PLUGIN_NAME}] WSコマンド: 不明なaction「{action}」を受信しました。")
 
     # ==========================================
+    # OBS ピッカー（ドロップダウン）
+    # ==========================================
+    def _make_obs_client(self):
+        conn = _load_obs_conn()
+        host     = conn.get("host", "127.0.0.1")
+        port     = int(conn.get("port", 4455))
+        password = conn.get("password", "")
+        return obs.ReqClient(host=host, port=port, password=password, timeout=3)
+
+    def _close_active_picker(self):
+        """開いているピッカーポップアップを閉じ、パネルの topmost を復元する。"""
+        popup = getattr(self, "_active_picker_popup", None)
+        if popup:
+            try:
+                if popup.winfo_exists():
+                    popup.destroy()
+            except Exception:
+                pass
+            self._active_picker_popup = None
+        try:
+            if self.panel.winfo_exists():
+                self.panel.attributes("-topmost", True)
+        except Exception:
+            pass
+
+    def _show_picker_popup(self, anchor_widget, entry_widget):
+        """anchorウィジェットの直下にリスト選択ポップアップを表示する。
+        パネルの topmost を一時解除してポップアップを最前面に出す。
+        """
+        self.panel.attributes("-topmost", False)
+
+        popup = tk.Toplevel(self.panel)
+        popup.overrideredirect(True)
+        popup.attributes("-topmost", True)
+        self._active_picker_popup = popup
+
+        x = anchor_widget.winfo_rootx()
+        y = anchor_widget.winfo_rooty() + anchor_widget.winfo_height()
+        popup.geometry(f"+{x}+{y}")
+
+        frame = tk.Frame(popup, bd=1, relief="solid", bg="#cccccc")
+        frame.pack(fill=tk.BOTH, expand=True)
+
+        scrollbar = tk.Scrollbar(frame, orient=tk.VERTICAL)
+        listbox = tk.Listbox(
+            frame, yscrollcommand=scrollbar.set,
+            selectmode=tk.SINGLE, font=("", 10),
+            height=6, width=36,
+            activestyle="dotbox"
+        )
+        scrollbar.config(command=listbox.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        confirmed = [entry_widget.get()]  # Escape で戻るベースライン（リストで可変参照）
+
+        def _get_selected_value():
+            sel = listbox.curselection()
+            if not sel:
+                return None
+            v = listbox.get(sel[0])
+            return "" if v == _PICKER_EMPTY else v
+
+        def on_apply(event=None):
+            """現在の選択をエントリに即時反映する（プレビュー）。confirmed は更新しない。"""
+            v = _get_selected_value()
+            if v is not None:
+                entry_widget.delete(0, tk.END)
+                entry_widget.insert(0, v)
+
+        def on_confirm(event=None):
+            """マウスクリック・Space: 反映してベースラインも更新。ポップアップは閉じない。"""
+            v = _get_selected_value()
+            if v is not None:
+                entry_widget.delete(0, tk.END)
+                entry_widget.insert(0, v)
+                confirmed[0] = v
+            return "break"
+
+        def on_confirm_close(event=None):
+            """Enter: 確定してポップアップを閉じる。"""
+            on_confirm()
+            self._close_active_picker()
+
+        def on_escape(event=None):
+            """Escape: ベースラインに戻してポップアップを閉じる。"""
+            entry_widget.delete(0, tk.END)
+            entry_widget.insert(0, confirmed[0])
+            self._close_active_picker()
+
+        def on_any_click(event):
+            """grab_set により全クリックがここに届く。ポップアップ外なら閉じる。"""
+            rx, ry = event.x_root, event.y_root
+            px, py = popup.winfo_rootx(), popup.winfo_rooty()
+            pw, ph = popup.winfo_width(), popup.winfo_height()
+            if not (px <= rx <= px + pw and py <= ry <= py + ph):
+                self._close_active_picker()
+
+        listbox.bind("<<ListboxSelect>>", on_apply)       # マウス選択・矢印キー両方で発火
+        listbox.bind("<KeyRelease-Up>", on_apply)          # <<ListboxSelect>> が発火しない環境の保険
+        listbox.bind("<KeyRelease-Down>", on_apply)
+        listbox.bind("<ButtonRelease-1>", on_confirm)      # マウスクリック確定 → baseline 更新
+        listbox.bind("<space>", on_confirm)                # Space 確定 → baseline 更新
+        listbox.bind("<Return>", on_confirm_close)
+        popup.bind("<Escape>", on_escape)
+        popup.bind("<Button-1>", on_any_click)
+        popup.grab_set()
+        listbox.focus_set()
+
+        return listbox, popup
+
+    def _open_scene_picker(self, anchor_btn, entry_widget, source_idx):
+        """OBSからシーン一覧を取得してピッカーを表示する。
+        既にポップアップが開いていれば閉じてリターン（トグル）。
+        """
+        if getattr(self, "_active_picker_popup", None) and self._active_picker_popup.winfo_exists():
+            self._close_active_picker()
+            return
+
+        listbox, popup = self._show_picker_popup(anchor_btn, entry_widget)
+        listbox.insert(tk.END, "読込中...")
+
+        def fetch():
+            try:
+                cl = self._make_obs_client()
+                res = cl.get_scene_list()
+                cl.disconnect()
+                scenes = res.scenes
+                return [s.scene_name if hasattr(s, "scene_name") else s.get("sceneName", "")
+                        for s in reversed(scenes)]
+            except Exception as e:
+                return None, str(e)
+
+        def on_done(result):
+            if not popup.winfo_exists():
+                return
+            listbox.delete(0, tk.END)
+            if isinstance(result, tuple):  # エラー
+                _, msg = result
+                self._slot_msg(source_idx, f"❌ OBS接続エラー: {msg}", "red")
+                self._close_active_picker()
+                return
+            listbox.insert(tk.END, _PICKER_EMPTY)
+            for name in result:
+                listbox.insert(tk.END, name)
+            listbox.config(height=min(12, max(3, len(result) + 1)))
+
+        def run():
+            result = fetch()
+            if anchor_btn.winfo_exists():
+                anchor_btn.after(0, lambda: on_done(result))
+
+        threading.Thread(target=run, daemon=True).start()
+
+    def _open_source_picker(self, anchor_btn, entry_widget, scene_entry_widget, source_idx):
+        """OBSからソース一覧を取得してピッカーを表示する。
+        scene_entry_widget が空ならアクティブシーン、入力があればそのシーンのアイテムを返す。
+        既にポップアップが開いていれば閉じてリターン（トグル）。
+        """
+        if getattr(self, "_active_picker_popup", None) and self._active_picker_popup.winfo_exists():
+            self._close_active_picker()
+            return
+
+        listbox, popup = self._show_picker_popup(anchor_btn, entry_widget)
+        listbox.insert(tk.END, "読込中...")
+
+        def fetch():
+            try:
+                cl = self._make_obs_client()
+                scene_name = scene_entry_widget.get().strip() if scene_entry_widget else ""
+                if not scene_name:
+                    scene_name = cl.get_current_program_scene().current_program_scene_name
+                res = cl.get_scene_item_list(scene_name)
+                cl.disconnect()
+                items = res.scene_items
+                names = []
+                for item in items:
+                    if hasattr(item, "source_name"):
+                        names.append(item.source_name)
+                    elif isinstance(item, dict):
+                        names.append(item.get("sourceName", ""))
+                return list(dict.fromkeys(reversed(names)))  # 重複除去・順序保持
+            except Exception as e:
+                return None, str(e)
+
+        def on_done(result):
+            if not popup.winfo_exists():
+                return
+            listbox.delete(0, tk.END)
+            if isinstance(result, tuple):  # エラー
+                _, msg = result
+                self._slot_msg(source_idx, f"❌ OBS接続エラー: {msg}", "red")
+                self._close_active_picker()
+                return
+            listbox.insert(tk.END, _PICKER_EMPTY)
+            for name in result:
+                listbox.insert(tk.END, name)
+            listbox.config(height=min(12, max(3, len(result) + 1)))
+
+        def run():
+            result = fetch()
+            if anchor_btn.winfo_exists():
+                anchor_btn.after(0, lambda: on_done(result))
+
+        threading.Thread(target=run, daemon=True).start()
+
+    # ==========================================
     # UI
     # ==========================================
     def open_settings_ui(self, parent_window):
@@ -425,6 +633,10 @@ class ObsScreenshotSenderPlugin(BasePlugin):
             ent.grid(row=0, column=4, sticky="ew", pady=(0, 3))
             ent.insert(0, settings.get(f"source{i}", ""))
             self.ent_sources.append(ent)
+            btn_src_drop = tk.Button(lf, text="▼", font=("", 8), padx=3, pady=0, width=2)
+            btn_src_drop.grid(row=0, column=5, sticky="ns", padx=(2, 0), pady=(0, 3))
+            btn_src_drop.config(command=lambda b=btn_src_drop, e=ent, ix=idx:
+                self._open_source_picker(b, e, self.ent_scenes[ix] if ix < len(self.ent_scenes) else None, ix))
 
             # シーン行: [自動ON/OFF☐] [送信有効シーン名: / シーン検知で定期ON/OFF:] [entry(colspan=3)]
             var_ss = tk.BooleanVar(value=settings.get(f"scene_send{i}", False))
@@ -445,6 +657,10 @@ class ObsScreenshotSenderPlugin(BasePlugin):
             ent_scene = ttk.Entry(lf, font=("", 10), textvariable=var_scene_str)
             ent_scene.grid(row=1, column=4, sticky="ew", pady=(0, 4))
             self.ent_scenes.append(ent_scene)
+            btn_scene_drop = tk.Button(lf, text="▼", font=("", 8), padx=3, pady=0, width=2)
+            btn_scene_drop.grid(row=1, column=5, sticky="ns", padx=(2, 0), pady=(0, 4))
+            btn_scene_drop.config(command=lambda b=btn_scene_drop, e=ent_scene, ix=idx:
+                self._open_scene_picker(b, e, ix))
 
             # キャプチャボタン
             btn_cap = tk.Button(
@@ -456,12 +672,12 @@ class ObsScreenshotSenderPlugin(BasePlugin):
                 command=lambda e=ent, n=i, ix=idx: self._capture_and_send(
                     e.get().strip(), n, ix, skip_dup=False)
             )
-            btn_cap.grid(row=2, column=0, columnspan=5, sticky="ew", pady=(1, 3))
+            btn_cap.grid(row=2, column=0, columnspan=6, sticky="ew", pady=(1, 3))
             self._capture_buttons.append(btn_cap)
 
             # 指示文（ラベルと入力を同一サブフレーム内でpackして密着させる）
             txt_row = ttk.Frame(lf)
-            txt_row.grid(row=3, column=0, columnspan=5, sticky="ew", pady=(2, 4))
+            txt_row.grid(row=3, column=0, columnspan=6, sticky="ew", pady=(2, 4))
             txt_row.columnconfigure(1, weight=1)
             ttk.Label(txt_row, text="指示文:").grid(row=0, column=0, sticky="nw", padx=(0, 4))
             txt = tk.Text(txt_row, height=2, font=("", 9))
@@ -475,13 +691,13 @@ class ObsScreenshotSenderPlugin(BasePlugin):
                 text="[ キャプチャ待ち ]\n取込み上限 1280×720 / 送信上限 640×640（縦横比保持）\n例）X:Y比が16:9の場合、1280×720取込み → 640×360で送信\n例）X:Y比が1:1の場合、720×720取込み → 640×640で送信",
                 background="#dddddd", anchor="center", justify="center"
             )
-            lbl_prev.grid(row=5, column=0, columnspan=5, sticky="ew", ipady=0)
+            lbl_prev.grid(row=5, column=0, columnspan=6, sticky="ew", ipady=0)
             self.lbl_previews.append(lbl_prev)
 
             # スロットごとのメッセージ表示
             lbl_msg = tk.Label(lf, text="", foreground="gray", anchor="w",
                                font=("", 9), padx=4, pady=1)
-            lbl_msg.grid(row=6, column=0, columnspan=5, sticky="ew", pady=(2, 0))
+            lbl_msg.grid(row=6, column=0, columnspan=6, sticky="ew", pady=(2, 0))
             self.lbl_slot_msgs.append(lbl_msg)
 
         # ── フッター ──
